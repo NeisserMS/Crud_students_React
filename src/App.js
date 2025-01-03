@@ -2,25 +2,35 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import React from 'react';
 
 import { Button, Container, FormGroup, Modal, ModalBody, ModalFooter, ModalHeader, Table } from 'reactstrap';
-
-const data = [
-  { id: 1, character: "Naruto", anime: "Naruto"},
-  { id: 2, character: "Yugi", anime: "Yugi Oh!"},
-  { id: 3, character: "Shadow", anime: "Shadow Garden"},
-  { id: 4, character: "Monkey D' Luffy", anime: "One Piece"}
-]
+import { StudentModel } from './models/student';
+import { createData, deleteData, fetchData, updateData, uploadImage } from './services/student';
 
 class App extends React.Component {
 
   state = { 
-    info: data,
-    form: {
-      id: '',
-      character: '',
-      anime: ''
-    },
+    info: [],
+    form: new StudentModel(),
     modalInsert: false,
-    modalEdit: false
+    modalEdit: false,
+    modalDelete: false,
+    modalUploadImage: false,
+    studentToDelete: null,
+    studentToUploadImage: null,
+    imageFile: null,
+    imagePreviewUrl: null
+  }
+  
+  componentDidMount(){
+    this.loadData();
+  }
+
+  loadData = async () => {
+    try {
+      const data = await fetchData();
+      this.setState({ info: data });
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }  
   }
 
   handleChange=e=>{
@@ -30,6 +40,19 @@ class App extends React.Component {
         [e.target.name]: e.target.value
       }
     })
+  }
+
+  handleFileChange = e => {
+    const file = e.target.files[0];
+    this.setState({ imageFile: file });
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      this.setState({ imagePreviewUrl: reader.result });
+    };
+    if (file) {
+      reader.readAsDataURL(file);
+    }
   }
 
   viewModalInsert=()=>{
@@ -48,38 +71,85 @@ class App extends React.Component {
     this.setState({modalEdit: false});
   }
 
-  insert=()=>{
-    var valueNew = {...this.state.form};
-    valueNew.id = this.state.info.length+1;
-    var list = this.state.info;
-    list.push(valueNew);
-    this.setState({data: list, modalInsert: false});
+  openModalDelete = (student) => {
+    this.setState({ modalDelete: true, studentToDelete: student });
   }
 
-  edit=(dato)=>{
-    var counter=0;
-    var list=this.state.info;
-    list.map((register)=>{
-      if(dato.id == register.id){
-        list[counter].character=dato.character;
-        list[counter].anime=dato.anime;
-      }
+  closeModalDelete = () => {
+    this.setState({ modalDelete: false, studentToDelete: null });
+  }
+
+  openModalUploadImage = (student) => {
+    this.setState({ 
+      modalUploadImage: true, 
+      studentToUploadImage: student, 
+      imagePreviewUrl: student.uri_img || null 
     });
-    this.setState({data: list, modalEdit: false});
   }
 
-  delete=(dato)=>{
-    var option = window.confirm("Realmente quieres eliminar el registro" + " " +  dato.id);
-    if(option){
-      var counter = 0;
-      var list = this.state.info;
-      list.map((registro)=>{
-        if(registro.id == dato.id){
-          list.splice(counter, 1)
-        }
-        counter++;
-      });
-      this.setState({data: list});
+  closeModalUploadImage = () => {
+    this.setState({ modalUploadImage: false, imageFile: null, studentToUploadImage: null, imagePreviewUrl: null });
+  }
+
+  uploadImage = async () => {
+    if (!this.state.imageFile) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Image = reader.result.split(',')[1]; 
+        const imageUrl = await uploadImage(this.state.studentToUploadImage.id, base64Image);
+        const updatedStudent = await updateData(this.state.studentToUploadImage.id, { ...this.state.studentToUploadImage, imageUrl });
+        this.setState(prevState => ({
+          info: prevState.info.map(student => student.id === updatedStudent.id ? updatedStudent : student),
+          modalUploadImage: false,
+          imageFile: null,
+          studentToUploadImage: null,
+          imagePreviewUrl: null
+        }));
+        this.loadData();
+      };
+      reader.readAsDataURL(this.state.imageFile);
+    } catch (error) {
+      console.error('Error uploading image:', error);
+    }
+  }
+
+  insert = async () => {
+    try {
+      const newStudent = await createData(this.state.form);
+      this.setState(prevState => ({
+        info: [...prevState.info, newStudent],
+        modalInsert: false
+      }));
+    } catch (error) {
+      console.error('Error creating data:', error);
+    }
+  }
+
+  edit = async () => {
+    try {
+      const updatedStudent = await updateData(this.state.form.id, this.state.form);
+      this.setState(prevState => ({
+        info: prevState.info.map(student => student.id === updatedStudent.id ? updatedStudent : student),
+        modalEdit: false
+      }));
+      this.loadData();
+    } catch (error) {
+      console.error('Error updating data:', error);
+    }
+  }
+
+  delete = async () => {
+    try {
+      await deleteData(this.state.studentToDelete.id);
+      this.setState(prevState => ({
+        info: prevState.info.filter(student => student.id !== this.state.studentToDelete.id),
+        modalDelete: false,
+        studentToDelete: null
+      }));
+    } catch (error) {
+      console.error('Error deleting data:', error);
     }
   }
 
@@ -88,29 +158,34 @@ class App extends React.Component {
       <>
       <Container>
         <br />
-        <Button color="success" onClick={()=>this.viewModalInsert()}>Agregar Character</Button>
+        <Button color="success" onClick={()=>this.viewModalInsert()}>Agregar Estudiante</Button>
         <br />
         <br />
         <Table>
           <thead>
             <tr>
-              <th>Id</th>
-              <th>Character</th>
-              <th>Anime</th>
-              <th>Actions</th>
+              <th>Nombres</th> 
+              <th>Apellido Paterno</th>
+              <th>Apellido Materno</th>
+              <th>Año</th>
+              <th>Grado</th>
+              <th>Acciones</th>
             </tr>
           </thead>
 
           <tbody>
             {
-              this.state.info.map((elem) =>(
-                <tr>
-                  <td> {elem.id} </td>
-                  <td> {elem.character} </td>
-                  <td> {elem.anime} </td>
+              this.state.info.map((elem) => (
+                <tr key={elem.id}>
+                  <td> {elem.nombres} </td>
+                  <td> {elem.apellidoPaterno} </td>
+                  <td> {elem.apellidoMaterno} </td>
+                  <td> {elem.anio} </td>
+                  <td> {elem.grado} </td>
                   <td> 
-                    <Button color="primary" onClick={()=>this.viewModalEdit(elem)}> Editar </Button>{" "}
-                    <Button color="danger" onClick={()=>this.delete(elem)}> Eliminar </Button>
+                    <Button color="warning" onClick={() => this.openModalUploadImage(elem)}> Subir imagen </Button>{" "}
+                    <Button color="primary" onClick={() => this.viewModalEdit(elem)}> Editar </Button>{" "}
+                    <Button color="danger" onClick={() => this.openModalDelete(elem)}> Eliminar </Button>
                   </td>
                 </tr>
               ))
@@ -122,54 +197,104 @@ class App extends React.Component {
       <Modal isOpen={this.state.modalInsert}>
         <ModalHeader>
           <div>
-            <h3>Insert Register</h3>
+            <h3>Agregar Estudiante</h3>
           </div>
         </ModalHeader>
         <ModalBody>
           <FormGroup>
-            <label>Id: </label>
-            <input className="form-control" readOnly type='text' value={this.state.info.length+1}/>
+            <label>Nombres: </label>
+            <input className="form-control" name="nombres" type='text' onChange={this.handleChange}/>
           </FormGroup>
           <FormGroup>
-            <label>Character: </label>
-            <input className="form-control" name="character" type='text' onChange={this.handleChange}/>
+            <label>Apellido Paterno: </label>
+            <input className="form-control" name="apellidoPaterno" type='text' onChange={this.handleChange}/>
           </FormGroup>
           <FormGroup>
-            <label>Anime: </label>
-            <input className="form-control" name="anime" type='text' onChange={this.handleChange}/>
+            <label>Apellido Materno: </label>
+            <input className="form-control" name="apellidoMaterno" type='text' onChange={this.handleChange}/>
+          </FormGroup>
+          <FormGroup>
+            <label>Año: </label>
+            <input className="form-control" name="anio" type='number' onChange={this.handleChange}/>
+          </FormGroup>
+          <FormGroup>
+            <label>Grado: </label>
+            <input className="form-control" name="grado" type='text' onChange={this.handleChange}/>
           </FormGroup>
         </ModalBody>
         <ModalFooter>
-            <Button color="primary" onClick={()=>this.insert()}> Insert </Button>
-            <Button color="danger" onClick={()=>this.closeModalInsert()} > Cancel </Button>
+            <Button color="primary" onClick={()=>this.insert()}> Agregar </Button>
+            <Button color="danger" onClick={()=>this.closeModalInsert()} > Cancelar </Button>
         </ModalFooter>
       </Modal>
 
       <Modal isOpen={this.state.modalEdit}>
         <ModalHeader>
           <div>
-            <h3>Edit Register</h3>
+            <h3>Editar Estudiante </h3>
           </div>
         </ModalHeader>
         <ModalBody>
           <FormGroup>
-            <label>Id: </label>
-            <input className="form-control" readOnly type='text' value={this.state.form.id}/>
+            <label>Nombres: </label>
+            <input className="form-control" name="nombres" type='text' onChange={this.handleChange} value={this.state.form.nombres}/>
           </FormGroup>
           <FormGroup>
-            <label>Character: </label>
-            <input className="form-control" name="character" type='text' onChange={this.handleChange} value={this.state.form.character}/>
+            <label>Apellido Paterno: </label>
+            <input className="form-control" name="apellidoPaterno" type='text' onChange={this.handleChange} value={this.state.form.apellidoPaterno}/>
           </FormGroup>
           <FormGroup>
-            <label>Anime: </label>
-            <input className="form-control" name="anime" type='text' onChange={this.handleChange} value={this.state.form.anime}/>
+            <label>Apellido Materno: </label>
+            <input className="form-control" name="apellidoMaterno" type='text' onChange={this.handleChange} value={this.state.form.apellidoMaterno}/>
+          </FormGroup>
+          <FormGroup>
+            <label>Año: </label>
+            <input className="form-control" name="anio" type='number' onChange={this.handleChange} value={this.state.form.anio}/>
+          </FormGroup>
+          <FormGroup>
+            <label>Grado: </label>
+            <input className="form-control" name="grado" type='text' onChange={this.handleChange} value={this.state.form.grado}/>
           </FormGroup>
         </ModalBody>
         <ModalFooter>
-            <Button color="primary" onClick={()=>this.edit(this.state.form) }> Edit </Button>
+            <Button color="primary" onClick={()=>this.edit(this.state.form) }> Editar </Button>
             <Button color="danger" onClick={()=>this.closeModalEdit()} > Cancelar </Button>
         </ModalFooter>
       </Modal>
+
+      <Modal isOpen={this.state.modalDelete}>
+          <ModalHeader>
+            Confirmar Eliminación
+          </ModalHeader>
+          <ModalBody>
+            ¿Realmente quieres eliminar el registro {this.state.studentToDelete?.id}?
+          </ModalBody>
+          <ModalFooter>
+            <Button color="danger" onClick={this.delete}>Eliminar</Button>
+            <Button color="secondary" onClick={this.closeModalDelete}>Cancelar</Button>
+          </ModalFooter>
+        </Modal>
+
+        <Modal isOpen={this.state.modalUploadImage}>
+          <ModalHeader>
+            <div>
+              <h3>Subir Imagen</h3>
+            </div>
+          </ModalHeader>
+          <ModalBody>
+            <FormGroup>
+              <label>Seleccionar Imagen: </label>
+              <input className="form-control" type='file' onChange={this.handleFileChange} />
+            </FormGroup>
+            {this.state.imagePreviewUrl && (
+              <img src={this.state.imagePreviewUrl} alt="Previsualización" style={{ width: '100%' }} />
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button color="primary" onClick={this.uploadImage}>Subir</Button>
+            <Button color="danger" onClick={this.closeModalUploadImage}>Cancelar</Button>
+          </ModalFooter>
+        </Modal>
       </>
     )
   }

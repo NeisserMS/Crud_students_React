@@ -1,3 +1,4 @@
+// filepath: /d:/Github/Crud_students_React/src/index.js
 import 'bootstrap/dist/css/bootstrap.min.css';
 import React from 'react';
 import ReactDOM from 'react-dom';
