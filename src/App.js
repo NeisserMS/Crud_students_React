@@ -283,8 +283,8 @@ class App extends React.Component {
           </ModalHeader>
           <ModalBody>
             <FormGroup>
-              <label>Seleccionar Imagen: </label>
-              <input className="form-control" type='file' onChange={this.handleFileChange} />
+              <label>Seleccionar Imagen </label>
+              <input className="form-control" type='file' accept="image/*" onChange={this.handleFileChange} />
             </FormGroup>
             {this.state.imagePreviewUrl && (
               <img src={this.state.imagePreviewUrl} alt="Previsualización" style={{ width: '100%' }} />
